@@ -5,14 +5,8 @@ import sqlite3
 from datetime import datetime
 from typing import Final
 
-# 
-import os
-
-API_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEN_API_KEY = os.getenv("GOOGLE_API_KEY")
-
 # External libraries
-import google.generativeai as genai
+from google import genai # NEW Google GenAI SDK
 from telegram import Update
 from telegram.ext import (
     Application, 
@@ -30,8 +24,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-# Load environment variables
-load_dotenv()
+# Load environment variables (Ensure these exact keys are set in Railway Variables)
 API_TOKEN: Final = os.getenv('TELEGRAM_BOT_TOKEN')
 GEN_API_KEY: Final = os.getenv('GEMINI_API_KEY')
 
@@ -41,9 +34,6 @@ GET_NAME, GET_ADDRESS, GET_EXPENSES, GET_EARNINGS = range(4)
 # Logging setup
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Configure Gemini
-genai.configure(api_key=GEN_API_KEY)
 
 # -------------------------------
 # Database Logic
@@ -156,13 +146,15 @@ def ai_parse_finance(text: str, mode: str):
     "{text}"
     """
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash-lite")
-        response = model.generate_content(
-            prompt, 
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0  # Forces mathematical precision
-            }
+        # NEW Google GenAI implementation
+        client = genai.Client(api_key=GEN_API_KEY)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.0
+            )
         )
         return json.loads(response.text)
     except Exception as e:
@@ -255,6 +247,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Main
 # -------------------------------
 def main():
+    if not API_TOKEN:
+        print("ERROR: TELEGRAM_BOT_TOKEN is not set.")
+        return
+        
     init_db()
     app = Application.builder().token(API_TOKEN).build()
 
