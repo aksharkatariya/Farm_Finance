@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Final
 
 # External libraries
-from google import genai # NEW Google GenAI SDK
+from google import genai # Google GenAI SDK
 from telegram import Update
 from telegram.ext import (
     Application, 
@@ -24,7 +24,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-# Load environment variables (Ensure these exact keys are set in Railway Variables)
+# Load environment variables
 API_TOKEN: Final = os.getenv('TELEGRAM_BOT_TOKEN')
 GEN_API_KEY: Final = os.getenv('GEMINI_API_KEY')
 
@@ -56,7 +56,6 @@ def init_db():
 def save_transaction(user_id, t_type, amount, category, date_str):
     conn = sqlite3.connect('finance_bot.db')
     cursor = conn.cursor()
-    # Default to today if date is missing
     final_date = date_str if date_str else datetime.now().strftime("%Y-%m-%d")
     cursor.execute("INSERT INTO transactions (user_id, type, amount, category, date) VALUES (?, ?, ?, ?, ?)",
                    (user_id, t_type, amount, category, final_date))
@@ -108,45 +107,27 @@ def generate_pdf(user_name, address, transactions, filename):
     doc.build(elements)
 
 # -------------------------------
-# AI Parsing Logic
+# AI Logic
 # -------------------------------
 def ai_parse_finance(text: str, mode: str):
+    """Parses natural language into structured JSON transaction data."""
     current_month_year = datetime.now().strftime("%Y-%m")
     current_full_date = datetime.now().strftime("%Y-%m-%d")
     current_display = datetime.now().strftime('%B %Y')
     
     prompt = f"""
-    You are a professional farm accountant. Analyze this text: "{text}"
-    Mode: This text describes {mode.upper()}S for the current period ({current_display}).
+    You are a professional accountant. Analyze this text: "{text}"
+    Mode: This text describes {mode.upper()}S.
 
-    ### LOGIC RULES:
-    1. **Percentage Calculation (The "Out Of" Rule):** - If a total is given (e.g., "Out of 5000"), apply all following percentages to that total.
-       - "20% on seeds" = 0.20 * 5000 = 1000.
-       - "The rest" or "balance" = Total minus all other calculated parts.
-
-    2. **Accrual vs Cash Rule (The "4000 Sales" Rule):**
-       - If the user says they earned/spent a total but will receive/pay a portion later, record the **TOTAL** amount as the transaction value for this month. 
-       - Example: "Earned 4000, 20% next month" -> amount: 4000.0, category: "Crop Sales".
-
-    3. **Date Intelligence:**
-       - "On the 5th" -> "{current_month_year}-05".
-       - "Yesterday" -> Calculate based on today's date ({current_full_date}).
-       - "Next month" -> If it's part of a payment split, ignore the date change and record it for the current month unless explicitly a separate transaction.
-       - If no date is mentioned, use "{current_full_date}".
-
-    4. **Categorization:**
-       - Create concise, professional categories (e.g., "Seeds", "Labor", "Pesticides", "Harvest Revenue").
-       - If the user mentions multiple items, split them into separate objects in the array.
-
-    ### OUTPUT FORMAT:
-    - Return ONLY a JSON array of objects. No conversational text.
-    - Example: [{{ "amount": 1200.50, "category": "Labor", "date": "2026-03-13" }}]
-
-    ### INPUT TO PROCESS:
-    "{text}"
+    Rules:
+    1. Handle percentages ("20% of 1000").
+    2. Handle accrual/cash splits (record the total transaction amount).
+    3. Infer dates. No date = "{current_full_date}".
+    4. Provide clean categories.
+    
+    Return ONLY a JSON array of objects: [{{ "amount": 1200.50, "category": "Labor", "date": "2026-03-13" }}]
     """
     try:
-        # NEW Google GenAI implementation
         client = genai.Client(api_key=GEN_API_KEY)
         response = client.models.generate_content(
             model="gemini-2.5-flash", 
@@ -161,8 +142,38 @@ def ai_parse_finance(text: str, mode: str):
         logger.error(f"AI Parsing Error: {e}")
         return []
 
+def ai_financial_advisor(question: str, context_data: dict) -> str:
+    """Answers user questions based on their financial history and current balances."""
+    prompt = f"""
+    You are a professional, friendly financial advisor.
+
+    Here is the user's current financial snapshot:
+    - Total Earnings: ${context_data['total_earnings']:,.2f}
+    - Total Expenses: ${context_data['total_expenses']:,.2f}
+    - Current Net Balance: ${context_data['net_balance']:,.2f}
+
+    Here are their recent transactions for context:
+    {context_data['recent_transactions']}
+
+    User's Question: "{question}"
+
+    Answer the user's question directly. 
+    - If they ask about affordability (e.g., "Can I afford X?"), analyze their net balance.
+    - Be concise, practical, and helpful. Do not use complex markdown, just standard text.
+    """
+    try:
+        client = genai.Client(api_key=GEN_API_KEY)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", 
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        logger.error(f"AI Advisor Error: {e}")
+        return "I'm having trouble analyzing your finances right now. Please try again later."
+
 # -------------------------------
-# Handlers
+# Handlers (Setup Workflow)
 # -------------------------------
 async def start_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Hi! Let's get your profile set up. What is your **name**?")
@@ -191,10 +202,6 @@ async def handle_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_chat_action("typing")
     data = ai_parse_finance(update.message.text, "expense")
     
-    if not data:
-        await update.message.reply_text("I couldn't find any expenses. Please try again (e.g., 'Coffee 5, Lunch 10').")
-        return GET_EXPENSES
-
     for item in data:
         save_transaction(update.message.from_user.id, 'expense', item['amount'], item['category'], item.get('date'))
     
@@ -208,9 +215,16 @@ async def handle_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for item in data:
         save_transaction(update.message.from_user.id, 'earning', item['amount'], item['category'], item.get('date'))
     
-    await update.message.reply_text("All set! Type /report to generate your monthly PDF.")
+    await update.message.reply_text("All set! Type /report to generate your monthly PDF.\nYou can also use /expense, /earning, or /ask anytime!")
     return ConversationHandler.END
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Conversation cancelled.")
+    return ConversationHandler.END
+
+# -------------------------------
+# Handlers (Standalone Commands)
+# -------------------------------
 async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     conn = sqlite3.connect('finance_bot.db')
@@ -239,9 +253,77 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.remove(file_path)
     conn.close()
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Conversation cancelled.")
-    return ConversationHandler.END
+async def add_expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Please provide details. Example: /expense paid $50 for tractor fuel")
+        return
+    
+    text = " ".join(context.args)
+    await update.message.reply_chat_action("typing")
+    
+    data = ai_parse_finance(text, "expense")
+    if not data:
+        await update.message.reply_text("I couldn't understand that. Try being more specific.")
+        return
+
+    for item in data:
+        save_transaction(update.message.from_user.id, 'expense', item['amount'], item['category'], item.get('date'))
+    
+    await update.message.reply_text(f"✅ Added {len(data)} expense(s) successfully!")
+
+async def add_earning_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Please provide details. Example: /earning sold crops for 4000")
+        return
+    
+    text = " ".join(context.args)
+    await update.message.reply_chat_action("typing")
+    
+    data = ai_parse_finance(text, "earning")
+    if not data:
+        await update.message.reply_text("I couldn't understand that. Try being more specific.")
+        return
+
+    for item in data:
+        save_transaction(update.message.from_user.id, 'earning', item['amount'], item['category'], item.get('date'))
+    
+    await update.message.reply_text(f"✅ Added {len(data)} earning(s) successfully!")
+
+async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Ask me a financial question! Example: /ask Can I afford a $300 tool?")
+        return
+
+    question = " ".join(context.args)
+    await update.message.reply_chat_action("typing")
+    user_id = update.message.from_user.id
+
+    # Fetch data from DB
+    conn = sqlite3.connect('finance_bot.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT type, category, amount, date FROM transactions WHERE user_id = ? ORDER BY date DESC", (user_id,))
+    txs = cursor.fetchall()
+    conn.close()
+
+    # Calculate balances
+    total_earnings = sum(t[2] for t in txs if t[0] == 'earning')
+    total_expenses = sum(t[2] for t in txs if t[0] == 'expense')
+    net_balance = total_earnings - total_expenses
+
+    # Format the last 15 transactions for context
+    recent_txs = [f"{t[3]}: {t[0].upper()} - {t[1]} (${t[2]})" for t in txs[:15]]
+    tx_string = "\n".join(recent_txs) if recent_txs else "No recent transactions found."
+
+    context_data = {
+        "total_earnings": total_earnings,
+        "total_expenses": total_expenses,
+        "net_balance": net_balance,
+        "recent_transactions": tx_string
+    }
+
+    # Ask AI
+    answer = ai_financial_advisor(question, context_data)
+    await update.message.reply_text(answer)
 
 # -------------------------------
 # Main
@@ -254,6 +336,7 @@ def main():
     init_db()
     app = Application.builder().token(API_TOKEN).build()
 
+    # Setup Workflow
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^(hi|Hi|Hello|hello)$'), start_conversation)],
         states={
@@ -265,10 +348,14 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
+    # Register Handlers
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler('report', report_command))
+    app.add_handler(CommandHandler('expense', add_expense_command))
+    app.add_handler(CommandHandler('earning', add_earning_command))
+    app.add_handler(CommandHandler('ask', ask_command))
 
-    print("Bot is live... Say 'Hi' to start.")
+    print("Bot is live... Ready for commands.")
     app.run_polling()
 
 if __name__ == "__main__":
