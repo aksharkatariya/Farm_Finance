@@ -5,8 +5,13 @@ import sqlite3
 from datetime import datetime
 from typing import Final
 
+# 
+import os
+
+API_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEN_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 # External libraries
-from dotenv import load_dotenv
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import (
