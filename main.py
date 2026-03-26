@@ -21,8 +21,9 @@ from telegram.ext import (
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 # Load environment variables
 API_TOKEN: Final = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -208,9 +209,35 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     title_style = styles['Title']
     sub_title = ParagraphStyle('SubTitle', parent=styles['Heading2'], spaceAfter=10)
 
-    # 1. Official Header
-    elements.append(Paragraph(f"Official Farm Financial Report", title_style))
-    elements.append(Paragraph(f"<b>Date:</b> {datetime.now().strftime('%B %d, %Y')}", styles['Normal']))
+    # 1. Official Header (with logo)
+    title_p = Paragraph(f"Official Farm Financial Report", title_style)
+    date_p = Paragraph(f"<b>Date:</b> {datetime.now().strftime('%B %d, %Y')}", styles['Normal'])
+
+    logo_path = "logo.png"
+    if os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path)
+            # Scale logo to reasonable dimensions (1-inch height max), keeping aspect ratio
+            aspect = logo.imageWidth / float(logo.imageHeight)
+            logo.drawHeight = 1.0 * inch
+            logo.drawWidth = 1.0 * inch * aspect
+            logo.hAlign = 'RIGHT'
+            
+            # Create a table to align Title/Date left and Logo right
+            header_table = Table([[ [title_p, date_p], logo ]], colWidths=[400, 100])
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ALIGN', (1, 0), (1, 0), 'RIGHT')
+            ]))
+            elements.append(header_table)
+        except Exception as e:
+            logger.error(f"Error loading logo for PDF: {e}")
+            elements.append(title_p)
+            elements.append(date_p)
+    else:
+        elements.append(title_p)
+        elements.append(date_p)
+
     elements.append(Spacer(1, 12))
 
     # 2. Profile Information
@@ -268,9 +295,9 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
 # -------------------------------
 async def start_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     intro = (
-        "Hello! I am your AI Farm Financial Assistant. 🌾\n\n"
+        "Hello! I am your AI Farm Financial Assistant.\n\n"
         "I'm here to help you track your farm's income, expenses, and generate professional financial reports "
-        "including Yield per Acre, DSCR, and more.\n\n"
+        "including important performance ratios.\n\n"
         "First, we need to create your profile. What is your **Full Name**?"
     )
     await update.message.reply_text(intro)
@@ -336,7 +363,7 @@ async def handle_farm_metrics(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(
         f"Understood. You are cultivating {metrics['cultivated_acres']} acres ({metrics['crop_details']}).\n\n"
         "Now, please list all **expenses** incurred for this crop in plain English. "
-        "Please ensure you include any **interest payments, debts, or loans** you are servicing so I can calculate your Debt-to-Income and DSCR ratios."
+        "Please ensure you include any **interest payments, debts, or loans** you are servicing so I can calculate important performance ratios."
     )
     return GET_EXPENSES
 
@@ -358,12 +385,12 @@ async def handle_earnings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_transaction(update.message.from_user.id, 'earning', item['amount'], item['category'], item.get('date'))
     
     summary_message = (
-        "✅ **All set! Your profile and initial ledger are fully configured.**\n\n"
+        "**All set! Your profile and initial ledger are fully configured.**\n\n"
         "Here is what I can do for you now:\n"
-        "📄 /report - Generates a professional PDF containing your ledger, Yield per Acre, Cost per Acre, Cash flow, DTI, and DSCR metrics.\n"
-        "💸 /expense <text> - Quickly add new expenses (e.g., '/expense $400 for tractor fuel').\n"
-        "💰 /earning <text> - Quickly add new earnings.\n"
-        "🧠 /ask <question> - Ask me any financial question (e.g., '/ask Can I afford to buy $2000 of new fertilizer?'). I will analyze your data and respond."
+        "/report - Generates a professional PDF containing your ledger and important performance ratios.\n"
+        "/expense <text> - Quickly add new expenses (e.g., '/expense $400 for tractor fuel').\n"
+        "/earning <text> - Quickly add new earnings.\n"
+        "/ask <question> - Ask me any financial question (e.g., '/ask Can I afford to buy $2000 of new fertilizer?'). I will analyze your data and respond."
     )
     await update.message.reply_text(summary_message, parse_mode='Markdown')
     return ConversationHandler.END
@@ -403,7 +430,7 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     generate_pdf(user, metrics, txs, file_path)
 
     with open(file_path, 'rb') as pdf:
-        await update.message.reply_document(document=pdf, filename="Official_Farm_Financial_Report.pdf", caption="Here is your detailed farm financial report! 📄")
+        await update.message.reply_document(document=pdf, filename="Official_Farm_Financial_Report.pdf", caption="Here is your detailed farm financial report!")
     
     os.remove(file_path)
 
@@ -423,7 +450,7 @@ async def add_expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     for item in data:
         save_transaction(update.message.from_user.id, 'expense', item['amount'], item['category'], item.get('date'))
     
-    await update.message.reply_text(f"✅ Added {len(data)} expense(s) successfully!")
+    await update.message.reply_text(f"Added {len(data)} expense(s) successfully!")
 
 async def add_earning_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -441,11 +468,11 @@ async def add_earning_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     for item in data:
         save_transaction(update.message.from_user.id, 'earning', item['amount'], item['category'], item.get('date'))
     
-    await update.message.reply_text(f"✅ Added {len(data)} earning(s) successfully!")
+    await update.message.reply_text(f"Added {len(data)} earning(s) successfully!")
 
 async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Ask me a financial question! Example: /ask What is my current Cost per Acre?")
+        await update.message.reply_text("Ask me a financial question! Example: /ask How is my farm performing overall?")
         return
 
     question = " ".join(context.args)
