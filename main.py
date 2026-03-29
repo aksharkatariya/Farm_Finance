@@ -206,28 +206,54 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     doc = SimpleDocTemplate(filename, pagesize=letter)
     elements = []
     styles = getSampleStyleSheet()
-    title_style = styles['Title']
+
+    # tighter styles for header
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        spaceAfter=0,
+        leftIndent=0
+    )
+    date_style = ParagraphStyle(
+        'CustomDate',
+        parent=styles['Normal'],
+        spaceAfter=0,
+        leftIndent=0
+    )
     sub_title = ParagraphStyle('SubTitle', parent=styles['Heading2'], spaceAfter=10)
 
     # 1. Official Header (with logo)
-    title_p = Paragraph(f"Official Farm Financial Report", title_style)
-    date_p = Paragraph(f"<b>Date:</b> {datetime.now().strftime('%B %d, %Y')}", styles['Normal'])
+    title_p = Paragraph("Official Farm Financial Report", title_style)
+    date_p = Paragraph(f"<b>Date:</b> {datetime.now().strftime('%B %d, %Y')}", date_style)
 
     logo_path = "logo.png"
     if os.path.exists(logo_path):
         try:
             logo = Image(logo_path)
-            # Scale logo to reasonable dimensions (1-inch height max), keeping aspect ratio
+            # 50% bigger logo
             aspect = logo.imageWidth / float(logo.imageHeight)
-            logo.drawHeight = 1.0 * inch
-            logo.drawWidth = 1.0 * inch * aspect
+            logo.drawHeight = 1.5 * inch
+            logo.drawWidth = 1.5 * inch * aspect
             logo.hAlign = 'RIGHT'
-            
-            # Create a table to align Title/Date left and Logo right
-            header_table = Table([[ [title_p, date_p], logo ]], colWidths=[400, 100])
+
+            # keep title + date left aligned, tighten spacing
+            left_block = Table([[title_p], [date_p]], colWidths=[380])
+            left_block.setStyle(TableStyle([
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+
+            header_table = Table([[left_block, logo]], colWidths=[400, 120])
             header_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ALIGN', (1, 0), (1, 0), 'RIGHT')
+                ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
             ]))
             elements.append(header_table)
         except Exception as e:
@@ -238,7 +264,8 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
         elements.append(title_p)
         elements.append(date_p)
 
-    elements.append(Spacer(1, 12))
+    # reduced whitespace after date
+    elements.append(Spacer(1, 6))
 
     # 2. Profile Information
     elements.append(Paragraph("Farmer Profile & Farm Data", sub_title))
@@ -255,15 +282,15 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
 
     # 3. Financial Metrics Analysis
     calc = calculate_metrics(transactions, metrics_data[1])
-    
+
     elements.append(Paragraph("Core Financial Metrics", sub_title))
     metrics_text = f"""
-    <b>Total Earnings:</b> ${calc['total_earnings']:,.2f}<br/>
-    <b>Total Expenses:</b> ${calc['total_expenses']:,.2f}<br/>
-    <b>Net Income (Cash Flow):</b> ${calc['net_income']:,.2f}<br/>
+    <b>Total Earnings:</b> ₹{calc['total_earnings']:,.2f}<br/>
+    <b>Total Expenses:</b> ₹{calc['total_expenses']:,.2f}<br/>
+    <b>Net Income (Cash Flow):</b> ₹{calc['net_income']:,.2f}<br/>
     <br/>
-    <b>Revenue Yield per Acre:</b> ${calc['yield_per_acre']:,.2f}/acre<br/>
-    <b>Cost per Acre:</b> ${calc['cost_per_acre']:,.2f}/acre<br/>
+    <b>Revenue Yield per Acre:</b> ₹{calc['yield_per_acre']:,.2f}/acre<br/>
+    <b>Cost per Acre:</b> ₹{calc['cost_per_acre']:,.2f}/acre<br/>
     <b>Debt-to-Income Ratio (DTI):</b> {calc['dti']}<br/>
     <b>Debt Service Coverage Ratio (DSCR):</b> {calc['dscr']}
     """
@@ -273,13 +300,13 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     # 4. Transaction Ledger Table
     elements.append(Paragraph("Transaction Ledger", sub_title))
     table_data = [["Type", "Category", "Amount", "Date"]]
-    
+
     for t_type, cat, amt, date in transactions:
-        table_data.append([t_type.capitalize(), cat, f"${amt:,.2f}", date])
+        table_data.append([t_type.capitalize(), cat, f"₹{amt:,.2f}", date])
 
     t = Table(table_data, colWidths=[80, 200, 100, 100])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E7D32')), # Dark green header
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E7D32')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -293,9 +320,10 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
 # -------------------------------
 # Handlers (Setup Workflow)
 # -------------------------------
+
 async def start_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     intro = (
-        "Hello! I am your AI Farm Financial Assistant.\n\n"
+        "Hello! I am Khitaab.\n\n"
         "I'm here to help you track your farm's income, expenses, and generate professional financial reports "
         "including important performance ratios.\n\n"
         "First, we need to create your profile. What is your **Full Name**?"
