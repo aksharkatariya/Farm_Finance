@@ -207,18 +207,15 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     elements = []
     styles = getSampleStyleSheet()
 
-    # tighter styles for header
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Title'],
-        spaceAfter=0,
-        leftIndent=0
+        spaceAfter=0
     )
     date_style = ParagraphStyle(
         'CustomDate',
         parent=styles['Normal'],
-        spaceAfter=0,
-        leftIndent=0
+        spaceAfter=0
     )
     sub_title = ParagraphStyle('SubTitle', parent=styles['Heading2'], spaceAfter=10)
 
@@ -230,23 +227,22 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     if os.path.exists(logo_path):
         try:
             logo = Image(logo_path)
-            # 50% bigger logo
             aspect = logo.imageWidth / float(logo.imageHeight)
             logo.drawHeight = 1.5 * inch
             logo.drawWidth = 1.5 * inch * aspect
             logo.hAlign = 'RIGHT'
 
-            # keep title + date left aligned, tighten spacing
-            left_block = Table([[title_p], [date_p]], colWidths=[380])
+            # put title and date in the same left-aligned block
+            left_block = Table([[title_p], [date_p]], colWidths=[400])
             left_block.setStyle(TableStyle([
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),   # align with normal body fields
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
                 ('TOPPADDING', (0, 0), (-1, -1), 0),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ]))
 
-            header_table = Table([[left_block, logo]], colWidths=[400, 120])
+            header_table = Table([[left_block, logo]], colWidths=[420, 100])
             header_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
@@ -264,7 +260,6 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
         elements.append(title_p)
         elements.append(date_p)
 
-    # reduced whitespace after date
     elements.append(Spacer(1, 6))
 
     # 2. Profile Information
@@ -285,12 +280,12 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
 
     elements.append(Paragraph("Core Financial Metrics", sub_title))
     metrics_text = f"""
-    <b>Total Earnings:</b> ₹{calc['total_earnings']:,.2f}<br/>
-    <b>Total Expenses:</b> ₹{calc['total_expenses']:,.2f}<br/>
-    <b>Net Income (Cash Flow):</b> ₹{calc['net_income']:,.2f}<br/>
+    <b>Total Earnings:</b> Rs. {calc['total_earnings']:,.2f}<br/>
+    <b>Total Expenses:</b> Rs. {calc['total_expenses']:,.2f}<br/>
+    <b>Net Income (Cash Flow):</b> Rs. {calc['net_income']:,.2f}<br/>
     <br/>
-    <b>Revenue Yield per Acre:</b> ₹{calc['yield_per_acre']:,.2f}/acre<br/>
-    <b>Cost per Acre:</b> ₹{calc['cost_per_acre']:,.2f}/acre<br/>
+    <b>Revenue Yield per Acre:</b> Rs. {calc['yield_per_acre']:,.2f}/acre<br/>
+    <b>Cost per Acre:</b> Rs. {calc['cost_per_acre']:,.2f}/acre<br/>
     <b>Debt-to-Income Ratio (DTI):</b> {calc['dti']}<br/>
     <b>Debt Service Coverage Ratio (DSCR):</b> {calc['dscr']}
     """
@@ -302,7 +297,7 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     table_data = [["Type", "Category", "Amount", "Date"]]
 
     for t_type, cat, amt, date in transactions:
-        table_data.append([t_type.capitalize(), cat, f"₹{amt:,.2f}", date])
+        table_data.append([t_type.capitalize(), cat, f"Rs. {amt:,.2f}", date])
 
     t = Table(table_data, colWidths=[80, 200, 100, 100])
     t.setStyle(TableStyle([
