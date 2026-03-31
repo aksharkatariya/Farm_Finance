@@ -202,6 +202,7 @@ def calculate_metrics(transactions, cultivated_acres):
         "dti": dti if isinstance(dti, str) else f"{dti:.2f}%"
     }
 
+
 def generate_pdf(user_data, metrics_data, transactions, filename):
     doc = SimpleDocTemplate(filename, pagesize=letter)
     elements = []
@@ -217,50 +218,51 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
         parent=styles['Normal'],
         spaceAfter=0
     )
-    sub_title = ParagraphStyle('SubTitle', parent=styles['Heading2'], spaceAfter=10)
+    sub_title = ParagraphStyle(
+        'SubTitle',
+        parent=styles['Heading2'],
+        spaceAfter=10
+    )
 
-    # 1. Official Header (with logo)
+    # Header pieces
     title_p = Paragraph("Official Farm Financial Report", title_style)
     date_p = Paragraph(f"<b>Date:</b> {datetime.now().strftime('%B %d, %Y')}", date_style)
 
+    # 1. Header row: title left, logo right
     logo_path = "logo.png"
     if os.path.exists(logo_path):
         try:
             logo = Image(logo_path)
             aspect = logo.imageWidth / float(logo.imageHeight)
-            logo.drawHeight = 1.5 * inch
-            logo.drawWidth = 1.5 * inch * aspect
-            logo.hAlign = 'RIGHT'
+            logo.drawHeight = 0.8 * inch
+            logo.drawWidth = 0.8 * inch * aspect
 
-            # put title and date in the same left-aligned block
-            left_block = Table([[title_p], [date_p]], colWidths=[400])
-            left_block.setStyle(TableStyle([
-                ('LEFTPADDING', (0, 0), (-1, -1), 6),   # align with normal body fields
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-
-            header_table = Table([[left_block, logo]], colWidths=[420, 100])
+            header_table = Table(
+                [[title_p, logo]],
+                colWidths=[420, 100]
+            )
             header_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
                 ('TOPPADDING', (0, 0), (-1, -1), 0),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                # no borders
+                ('BOX', (0, 0), (-1, -1), 0, colors.white),
+                ('GRID', (0, 0), (-1, -1), 0, colors.white),
             ]))
             elements.append(header_table)
+
         except Exception as e:
             logger.error(f"Error loading logo for PDF: {e}")
             elements.append(title_p)
-            elements.append(date_p)
     else:
         elements.append(title_p)
-        elements.append(date_p)
 
     elements.append(Spacer(1, 6))
+    elements.append(date_p)
+    elements.append(Spacer(1, 8))
 
     # 2. Profile Information
     elements.append(Paragraph("Farmer Profile & Farm Data", sub_title))
@@ -311,6 +313,7 @@ def generate_pdf(user_data, metrics_data, transactions, filename):
     elements.append(t)
 
     doc.build(elements)
+
 
 # -------------------------------
 # Handlers (Setup Workflow)
