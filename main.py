@@ -97,7 +97,7 @@ def ai_parse_farm_metrics(text: str):
     try:
         client = genai.Client(api_key=GEN_API_KEY)
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite", 
+            model="gemini-2.5-flash", 
             contents=prompt,
             config=genai.types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0)
         )
@@ -126,7 +126,7 @@ def ai_parse_finance(text: str, mode: str):
     try:
         client = genai.Client(api_key=GEN_API_KEY)
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite", 
+            model="gemini-2.5-flash", 
             contents=prompt,
             config=genai.types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0)
         )
@@ -164,7 +164,7 @@ def ai_financial_advisor(question: str, context_data: dict) -> str:
     try:
         client = genai.Client(api_key=GEN_API_KEY)
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite", 
+            model="gemini-2.5-flash", 
             contents=prompt
         )
         return response.text
