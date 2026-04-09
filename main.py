@@ -440,7 +440,7 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     metrics = cursor.fetchone()
 
     if not user or not metrics:
-        await update.message.reply_text("Please say 'hi' to set up your profile and farm metrics first!")
+        await update.message.reply_text("Please type '/start' to set up your profile and farm metrics first!")
         conn.close()
         return
 
@@ -559,9 +559,7 @@ def main():
     # Setup Workflow
     conv_handler = ConversationHandler(
         entry_points=[
-            # This handles the /start command sent by Telegram automatically
             CommandHandler('start', start_conversation),
-            # This handles cases where a user types 'hi' or other text to start
             MessageHandler(filters.TEXT & ~filters.COMMAND, start_conversation)
         ],
         states={
@@ -573,9 +571,11 @@ def main():
             GET_EXPENSES: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_expenses)],
             GET_EARNINGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_earnings)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        # Allow user to restart the setup by typing /start even if they are mid-conversation
-        allow_reentry=True 
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('start', start_conversation),
+        ],
+        allow_reentry=False
     )
 
     # Register Handlers
