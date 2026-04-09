@@ -558,7 +558,7 @@ def main():
 
     # Setup Workflow
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex('^(hi|Hi|Hello|hello)$'), start_conversation)],
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, start_conversation)],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name)],
             GET_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_address)],
