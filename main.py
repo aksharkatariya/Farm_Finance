@@ -558,7 +558,12 @@ def main():
 
     # Setup Workflow
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, start_conversation)],
+        entry_points=[
+            # This handles the /start command sent by Telegram automatically
+            CommandHandler('start', start_conversation),
+            # This handles cases where a user types 'hi' or other text to start
+            MessageHandler(filters.TEXT & ~filters.COMMAND, start_conversation)
+        ],
         states={
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name)],
             GET_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_address)],
@@ -568,7 +573,9 @@ def main():
             GET_EXPENSES: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_expenses)],
             GET_EARNINGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_earnings)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        # Allow user to restart the setup by typing /start even if they are mid-conversation
+        allow_reentry=True 
     )
 
     # Register Handlers
