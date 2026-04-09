@@ -177,16 +177,29 @@ def ai_financial_advisor(question: str, context_data: dict) -> str:
 # -------------------------------
 def calculate_metrics(transactions, cultivated_acres):
     """Calculates core farm financial metrics from raw data."""
-    total_earnings = sum(t[2] for t in transactions if t[0] == 'earning')
-    total_expenses = sum(t[2] for t in transactions if t[0] == 'expense')
-    debt_service = sum(t[2] for t in transactions if t[0] == 'expense' and 'debt' in t[1].lower() or 'interest' in t[1].lower() or 'loan' in t[1].lower())
-    
+
+    def safe_amount(value):
+        return float(value) if value is not None else 0.0
+
+    total_earnings = sum(safe_amount(t[2]) for t in transactions if t[0] == 'earning')
+    total_expenses = sum(safe_amount(t[2]) for t in transactions if t[0] == 'expense')
+
+    debt_service = sum(
+        safe_amount(t[2])
+        for t in transactions
+        if t[0] == 'expense' and (
+            'debt' in (t[1] or '').lower()
+            or 'interest' in (t[1] or '').lower()
+            or 'loan' in (t[1] or '').lower()
+        )
+    )
+
     net_income = total_earnings - total_expenses
-    noi = net_income + debt_service # Net Operating Income
-    
+    noi = net_income + debt_service
+
     yield_per_acre = total_earnings / cultivated_acres if cultivated_acres > 0 else 0
     cost_per_acre = total_expenses / cultivated_acres if cultivated_acres > 0 else 0
-    
+
     dscr = (noi / debt_service) if debt_service > 0 else "N/A (No Debt)"
     dti = (debt_service / total_earnings) * 100 if total_earnings > 0 else 0
 
@@ -194,12 +207,12 @@ def calculate_metrics(transactions, cultivated_acres):
         "total_earnings": total_earnings,
         "total_expenses": total_expenses,
         "net_income": net_income,
-        "cash_flow": net_income, # Simplified for standard tracking
+        "cash_flow": net_income,
         "debt_service": debt_service,
         "yield_per_acre": yield_per_acre,
         "cost_per_acre": cost_per_acre,
         "dscr": dscr if isinstance(dscr, str) else f"{dscr:.2f}x",
-        "dti": dti if isinstance(dti, str) else f"{dti:.2f}%"
+        "dti": f"{dti:.2f}%"
     }
 
 
